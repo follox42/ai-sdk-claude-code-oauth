@@ -1,47 +1,51 @@
 # ai-sdk-claude-code-oauth
 
-🔐 Vercel AI SDK provider that uses **Claude Code OAuth tokens** for free API access.
+> Vercel AI SDK provider that uses Claude Code's OAuth tokens for free Claude API access.
 
-Use Claude's API without paying for API credits - leverages the same OAuth tokens that Claude Code CLI uses.
+## How It Works
+
+This provider reads the OAuth tokens stored by Claude Code CLI (`~/.claude/.credentials.json`) and uses them to make API calls. It mimics Claude Code's exact headers to authenticate with Anthropic's OAuth endpoint.
+
+**Requirements:**
+- Claude Code CLI installed and logged in ([claude.ai/code](https://claude.ai/code))
+- Node.js 18+
 
 ## Installation
 
 ```bash
-npm install ai-sdk-claude-code-oauth ai
+npm install ai-sdk-claude-code-oauth
 ```
 
-## Prerequisites
-
-1. **Install Claude Code CLI**
-   ```bash
-   npm install -g @anthropic-ai/claude-code
-   ```
-
-2. **Log in to Claude Code**
-   ```bash
-   claude login
-   ```
-   
-   This creates `~/.claude/.credentials.json` with your OAuth tokens.
+Or use directly from the repo:
+```bash
+npm install github:Follox/ai-sdk-claude-code-oauth
+```
 
 ## Usage
 
-```typescript
-import { claudeCode } from 'ai-sdk-claude-code-oauth';
-import { generateText, streamText } from 'ai';
+### With Vercel AI SDK
 
-// Simple text generation
-const { text } = await generateText({
+```ts
+import { claudeCode } from 'ai-sdk-claude-code-oauth';
+import { generateText } from 'ai';
+
+const result = await generateText({
   model: claudeCode('claude-sonnet-4-20250514'),
-  prompt: 'Explain quantum computing in simple terms.',
+  prompt: 'Hello, how are you?',
 });
 
-console.log(text);
+console.log(result.text);
+```
 
-// Streaming
+### Streaming
+
+```ts
+import { claudeCode } from 'ai-sdk-claude-code-oauth';
+import { streamText } from 'ai';
+
 const result = await streamText({
   model: claudeCode('claude-sonnet-4-20250514'),
-  prompt: 'Write a short story about a robot.',
+  prompt: 'Write a haiku about coding',
 });
 
 for await (const chunk of result.textStream) {
@@ -49,79 +53,119 @@ for await (const chunk of result.textStream) {
 }
 ```
 
-## Available Models
+### With Tools
 
-- `claude-sonnet-4-20250514` (recommended)
-- `claude-opus-4-20250514`
-- `claude-haiku-3-5-20241022`
-- `claude-3-5-sonnet-20241022`
-- `claude-3-5-haiku-20241022`
-- `claude-3-opus-20240229`
-
-## Model Settings
-
-```typescript
-const model = claudeCode('claude-sonnet-4-20250514', {
-  maxTokens: 4096,
-  temperature: 0.7,
-  topP: 0.9,
-  topK: 40,
-});
-```
-
-## Advanced Usage
-
-### Direct Token Access
-
-```typescript
-import { getValidAccessToken, readCredentials } from 'ai-sdk-claude-code-oauth';
-
-// Get a valid access token (auto-refreshes if expired)
-const token = await getValidAccessToken();
-
-// Read raw credentials
-const creds = readCredentials();
-console.log(creds.claudeAiOauth.expiresAt);
-```
-
-### With Tool Calling
-
-```typescript
+```ts
 import { claudeCode } from 'ai-sdk-claude-code-oauth';
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 
-const { text, toolCalls } = await generateText({
+const result = await generateText({
   model: claudeCode('claude-sonnet-4-20250514'),
   tools: {
     weather: tool({
-      description: 'Get the weather for a location',
+      description: 'Get the weather in a location',
       parameters: z.object({
-        location: z.string(),
+        location: z.string().describe('City name'),
       }),
-      execute: async ({ location }) => {
-        return `The weather in ${location} is sunny!`;
-      },
+      execute: async ({ location }) => ({
+        location,
+        temperature: 22,
+        unit: 'celsius',
+      }),
     }),
   },
   prompt: 'What is the weather in Paris?',
 });
 ```
 
-## How It Works
+## Available Models
 
-1. Reads OAuth tokens from `~/.claude/.credentials.json`
-2. Auto-refreshes expired tokens using the refresh token
-3. Makes requests to Anthropic API with Bearer authentication
-4. Implements full Vercel AI SDK `LanguageModelV1` interface
+```ts
+// Latest models
+claudeCode('claude-sonnet-4-20250514')
+claudeCode('claude-opus-4-20250514')
+claudeCode('claude-haiku-3-5-20241022')
 
-## Rate Limits
+// Older models
+claudeCode('claude-3-5-sonnet-20241022')
+claudeCode('claude-3-5-haiku-20241022')
+claudeCode('claude-3-opus-20240229')
 
-This uses your Claude Code subscription limits. Check your usage at [console.anthropic.com](https://console.anthropic.com).
+// Any model string works
+claudeCode('any-model-id')
+```
 
-## ⚠️ Disclaimer
+## Model Settings
 
-This package uses Claude Code's OAuth tokens in a way that may not be officially supported by Anthropic. Use at your own risk.
+```ts
+claudeCode('claude-sonnet-4-20250514', {
+  maxTokens: 4096,
+  temperature: 0.7,
+  topP: 0.9,
+  topK: 40,
+  includeClaudeCodeIdentity: true, // Default: true (recommended for OAuth)
+});
+```
+
+## Credential Management
+
+```ts
+import { 
+  readCredentials, 
+  getValidAccessToken, 
+  isTokenExpired,
+  refreshToken 
+} from 'ai-sdk-claude-code-oauth';
+
+// Read credentials
+const creds = readCredentials();
+console.log('Expires:', new Date(creds.claudeAiOauth.expiresAt));
+console.log('Scopes:', creds.claudeAiOauth.scopes);
+
+// Check expiration
+if (isTokenExpired(creds)) {
+  console.log('Token expired, will auto-refresh');
+}
+
+// Get valid token (auto-refreshes if needed)
+const token = await getValidAccessToken();
+```
+
+## How It Works (Technical)
+
+1. **Reads OAuth tokens** from `~/.claude/.credentials.json` (created by Claude Code)
+2. **Auto-refreshes expired tokens** using Anthropic's OAuth endpoint
+3. **Mimics Claude Code headers** exactly:
+   - `anthropic-beta: claude-code-20250219,oauth-2025-04-20,...`
+   - `user-agent: claude-cli/X.X.X (external, cli)`
+   - `x-app: cli`
+   - `anthropic-dangerous-direct-browser-access: true`
+4. **Includes Claude Code identity** in system prompt for compatibility
+
+## Troubleshooting
+
+### "Claude Code credentials not found"
+Make sure Claude Code is installed and you're logged in:
+```bash
+claude --version
+claude login  # if not logged in
+```
+
+### "Token expired"
+Tokens auto-refresh, but if issues persist:
+```bash
+claude logout
+claude login
+```
+
+### Rate Limits
+OAuth tokens share Claude Code's rate limits (Pro/Max subscription limits apply).
+
+## Credits
+
+- Inspired by how [Moltbot](https://github.com/moltbot/moltbot) handles OAuth via `@mariozechner/pi-ai`
+- OAuth header discovery from the pi-ai package's Anthropic provider
 
 ## License
 

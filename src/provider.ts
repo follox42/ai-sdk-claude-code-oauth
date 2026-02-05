@@ -2,6 +2,7 @@
  * Claude Code OAuth Provider for Vercel AI SDK
  * 
  * Uses OAuth tokens from Claude Code CLI instead of API keys
+ * Mimics Claude Code's headers exactly as pi-ai does
  */
 
 import type {
@@ -15,14 +16,36 @@ import type {
 
 import { getValidAccessToken } from './credentials.js';
 
+// Claude Code specific headers - from pi-ai's anthropic.js
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_VERSION = '2023-06-01';
+const CLAUDE_CODE_VERSION = '2.1.0'; // Mimic recent Claude Code version
+const ANTHROPIC_BETA_FEATURES = [
+  'claude-code-20250219',
+  'oauth-2025-04-20', 
+  'fine-grained-tool-streaming-2025-05-14'
+];
+
+function getAuthHeaders(accessToken: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Authorization': `Bearer ${accessToken}`,
+    'anthropic-version': ANTHROPIC_API_VERSION,
+    'anthropic-beta': ANTHROPIC_BETA_FEATURES.join(','),
+    'anthropic-dangerous-direct-browser-access': 'true',
+    'user-agent': `claude-cli/${CLAUDE_CODE_VERSION} (external, cli)`,
+    'x-app': 'cli',
+  };
+}
 
 export interface ClaudeCodeModelSettings {
   maxTokens?: number;
   temperature?: number;
   topP?: number;
   topK?: number;
+  /** Include Claude Code identity in system prompt (recommended for OAuth) */
+  includeClaudeCodeIdentity?: boolean;
 }
 
 export type ClaudeCodeModelId = 
@@ -33,6 +56,9 @@ export type ClaudeCodeModelId =
   | 'claude-3-5-haiku-20241022'
   | 'claude-3-opus-20240229'
   | (string & {});
+
+// Claude Code identity prefix (from pi-ai)
+const CLAUDE_CODE_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
 
 export class ClaudeCodeLanguageModel implements LanguageModelV1 {
   readonly specificationVersion = 'v1' as const;
@@ -46,7 +72,10 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
 
   constructor(modelId: ClaudeCodeModelId, settings: ClaudeCodeModelSettings = {}) {
     this.modelId = modelId;
-    this.settings = settings;
+    this.settings = {
+      includeClaudeCodeIdentity: true, // Default true for OAuth tokens
+      ...settings,
+    };
   }
 
   async doGenerate(options: LanguageModelV1CallOptions): Promise<{
@@ -64,7 +93,14 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
     
     // Convert AI SDK prompt to Anthropic format
     const messages = this.convertPrompt(prompt);
-    const systemMessage = this.extractSystemMessage(prompt);
+    let systemMessage = this.extractSystemMessage(prompt);
+    
+    // Prepend Claude Code identity for OAuth (as pi-ai does)
+    if (this.settings.includeClaudeCodeIdentity) {
+      systemMessage = systemMessage 
+        ? `${CLAUDE_CODE_IDENTITY}\n\n${systemMessage}`
+        : CLAUDE_CODE_IDENTITY;
+    }
     
     // Build request body
     const body: Record<string, unknown> = {
@@ -104,11 +140,14 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
       }];
       body.tool_choice = { type: 'tool', name: mode.tool.name };
     } else if (mode?.type === 'regular' && mode.tools && mode.tools.length > 0) {
-      body.tools = mode.tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.parameters,
-      }));
+      body.tools = mode.tools
+        .filter((tool): tool is typeof tool & { type: 'function'; description?: string; parameters: unknown } => 
+          tool.type === 'function')
+        .map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.parameters,
+        }));
       
       if (mode.toolChoice?.type === 'tool') {
         body.tool_choice = { type: 'tool', name: mode.toolChoice.toolName };
@@ -121,11 +160,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
 
     const response = await fetch(ANTHROPIC_API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-        'anthropic-version': ANTHROPIC_API_VERSION,
-      },
+      headers: getAuthHeaders(accessToken),
       body: JSON.stringify(body),
       signal: abortSignal,
     });
@@ -206,7 +241,14 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
     const { prompt, mode, maxTokens, temperature, topP, topK, abortSignal } = options;
     
     const messages = this.convertPrompt(prompt);
-    const systemMessage = this.extractSystemMessage(prompt);
+    let systemMessage = this.extractSystemMessage(prompt);
+    
+    // Prepend Claude Code identity for OAuth
+    if (this.settings.includeClaudeCodeIdentity) {
+      systemMessage = systemMessage 
+        ? `${CLAUDE_CODE_IDENTITY}\n\n${systemMessage}`
+        : CLAUDE_CODE_IDENTITY;
+    }
     
     const body: Record<string, unknown> = {
       model: this.modelId,
@@ -232,20 +274,19 @@ export class ClaudeCodeLanguageModel implements LanguageModelV1 {
       }];
       body.tool_choice = { type: 'tool', name: mode.tool.name };
     } else if (mode?.type === 'regular' && mode.tools && mode.tools.length > 0) {
-      body.tools = mode.tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.parameters,
-      }));
+      body.tools = mode.tools
+        .filter((tool): tool is typeof tool & { type: 'function'; description?: string; parameters: unknown } => 
+          tool.type === 'function')
+        .map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.parameters,
+        }));
     }
 
     const response = await fetch(ANTHROPIC_API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-        'anthropic-version': ANTHROPIC_API_VERSION,
-      },
+      headers: getAuthHeaders(accessToken),
       body: JSON.stringify(body),
       signal: abortSignal,
     });
