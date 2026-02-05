@@ -1,0 +1,52 @@
+{
+  "name": "ai-sdk-claude-code-oauth",
+  "version": "0.1.0",
+  "description": "Vercel AI SDK provider that uses Claude Code OAuth tokens for free API access",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "test": "node --test dist/*.test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "ai-sdk",
+    "vercel",
+    "claude",
+    "claude-code",
+    "anthropic",
+    "oauth",
+    "llm"
+  ],
+  "author": "Follox",
+  "license": "MIT",
+  "dependencies": {
+    "@ai-sdk/provider": "^1.0.0",
+    "@ai-sdk/provider-utils": "^2.0.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "ai": ">=3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Follox/ai-sdk-claude-code-oauth"
+  }
+}
