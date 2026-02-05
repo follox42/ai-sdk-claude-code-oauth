@@ -18,7 +18,7 @@ npm install ai-sdk-claude-code-oauth
 
 Or use directly from the repo:
 ```bash
-npm install github:Follox/ai-sdk-claude-code-oauth
+npm install github:follox42/ai-sdk-claude-code-oauth
 ```
 
 ## Usage
