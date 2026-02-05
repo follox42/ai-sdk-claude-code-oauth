@@ -1,15 +1,21 @@
 {
   "name": "ai-sdk-claude-code-oauth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Vercel AI SDK provider that uses Claude Code OAuth tokens for free API access",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "files": [
@@ -17,9 +23,9 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsup src/index.ts --format esm --dts --watch",
-    "test": "node --test dist/*.test.js",
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "node test.mjs",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
